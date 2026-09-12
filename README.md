@@ -1,27 +1,63 @@
-# 🛡️ GuardianLicense — Asymmetric Software Licensing Engine
+# GuardianLicense 🛡️
 
-Un motor moderno de licenciamiento de software basado en **criptografía asimétrica Ed25519**. Diseñado para permitir a desarrolladores y empresas emitir licencias inviolables atadas a hardware, permitiendo que el software cliente verifique la autenticidad de forma offline sin comprometer nunca la clave privada del servidor.
+Un motor moderno de licenciamiento de software basado en **criptografía asimétrica**, vinculación de hardware (*hardware-binding*) y **sesiones en tiempo real**.
+
+## 🎯 Sobre este proyecto
+Este es un proyecto de portafolio educativo diseñado para demostrar patrones reales de arquitectura de licenciamiento y seguridad en software comercial. Todo el código, producto y datos son ficticios y sirven exclusivamente para exhibir buenas prácticas de diseño de backend y criptografía aplicada.
 
 ---
 
-## 🏛️ Arquitectura del Patrón
+## 🔄 Ciclo de Vida del Cliente (Flujo de Arquitectura)
 
-```
-┌─────────────────────────┐                     ┌─────────────────────────┐
-│     Servidor Emisor     │                     │     Cliente / SDK       │
-│  (Clave Privada Ed25519)│                     │  (Clave Pública Ed25519)│
-└───────────┬─────────────┘                     └────────────▲────────────┘
-            │                                                │
-            │ 1. Genera payload (dispositivo, vencimiento)  │ 3. Valida firma
-            │ 2. Firma digitalmente con clave privada        │    y expiración
-            ▼                                                │    sin conexión
-     [ Licencia Firmada ] ───────────────────────────────────┘
+```mermaid
+sequenceDiagram
+    participant C as Software Cliente
+    participant S as Servidor Guardian API
+    participant CDN as Servidor de Descargas
+    
+    %% Emisión y Verificación
+    Note over C, S: 1. Emisión y Verificación Offline
+    S->>C: Licencia Firmada (Ed25519)
+    C->>C: Verifica Firma con Clave Pública
+    C->>C: Verifica Vinculación de Hardware (Device ID)
+    
+    %% Sesiones y Heartbeat
+    Note over C, S: 2. Sesiones y Lockout
+    C->>S: POST /sessions/start (Licencia + Device ID)
+    S-->>C: Token de Sesión (Corta duración)
+    loop Cada X minutos
+        C->>S: POST /sessions/heartbeat (Token)
+        alt Token válido
+            S-->>C: Token renovado
+        else Token expirado/inválido
+            S-->>C: 401 Unauthorized
+            C->>C: Bloqueo de Aplicación (Lockout)
+        end
+    end
+    
+    %% OTA Updates
+    Note over C, CDN: 3. Actualizaciones Seguras (OTA)
+    C->>S: GET /updates/latest
+    S-->>C: Anuncio Firmado (URL + SHA-256)
+    C->>C: Verifica Firma del Anuncio
+    C->>CDN: Descarga Binario
+    CDN-->>C: Archivo (Ej. app.zip)
+    C->>C: Calcula SHA-256 local y compara
+    alt Hash Coincide
+        C->>C: Instala Actualización
+    else Hash No Coincide
+        C->>C: Rechaza paquete (Posible MitM)
+    end
 ```
 
-### Principios de Diseño
-1. **Verificación Asimétrica Offline:** El cliente solo necesita la clave pública integrada para verificar que la licencia no ha sido alterada.
-2. **Imposibilidad de Falsificación:** Incluso si un usuario desensambla el software cliente, solo obtendrá la clave pública, la cual es matemáticamente incapaz de generar nuevas firmas.
-3. **Payload Canónico:** Normalización estricta de JSON (`sort_keys=True`) para garantizar que la representación de bytes a firmar sea unívoca e invariable.
+---
+
+## 🏗️ Decisiones de Arquitectura
+
+- **Ed25519 (Asimétrico) vs HMAC (Simétrico):** Al usar criptografía asimétrica, el cliente solo necesita conocer la clave **pública** para verificar la licencia. Incluso si un atacante descompila el binario del cliente, no obtendrá la clave privada, por lo que es matemáticamente imposible que falsifique o modifique licencias.
+- **Vinculación de Hardware (Hardware Binding):** La firma digital valida que la licencia fue emitida por nosotros, pero no impide que un usuario la copie y se la dé a 10 amigos. Vincular la licencia a un `device_id` (MAC/Disco/Hostname) asegura que una licencia válida solo funcione en la máquina física autorizada.
+- **Sesiones Cortas (Heartbeats):** Una licencia de largo plazo (ej. 1 año) es difícil de revocar offline. Exigir un *heartbeat* recurrente con un token de corta duración permite al servidor revocar el acceso casi en tiempo real si detecta abuso, sin tener que esperar a que expire la licencia original.
+- **Verificación OTA en 2 Capas:** Se separa la confianza del canal de entrega. El anuncio se firma para garantizar **autenticidad** (quién dice que hay una actualización), y el paquete descargado se valida por SHA-256 para **integridad**. Esto permite usar CDNs inseguros y baratos para distribuir archivos pesados, manteniendo una seguridad impenetrable frente a ataques MitM.
 
 ---
 
@@ -58,6 +94,9 @@ pip install cryptography fastapi pydantic uvicorn
 ```
 
 ### 2. Ejecutar Demostraciones
+
+> 💡 **Nota:** Todos los scripts de demostración son completamente autocontenidos. Simulan la interacción cliente-servidor y la generación de claves en memoria, por lo que **no es necesario** levantar el servidor FastAPI (`uvicorn`) por separado para probarlos.
+
 ```bash
 # Prueba 1: Núcleo Criptográfico (Firma y Verificación)
 python examples/demo_verify.py
@@ -74,7 +113,7 @@ python examples/demo_update_verification.py
 
 ---
 
-## 🔒 Vinculación a Dispositivo (Hardware Binding)
+## 💻 Vinculación a Dispositivo (Hardware Binding)
 
 ### ¿Qué es y por qué se utiliza?
 La firma digital asimétrica garantiza que una licencia es legítima y no ha sido adulterada. Sin embargo, por sí sola **no impide que un usuario legítimo copie el archivo de licencia y lo distribuya a 50 computadoras diferentes**.
