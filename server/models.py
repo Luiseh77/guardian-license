@@ -11,7 +11,7 @@ class LicenseIssueRequest(BaseModel):
     device_id: str = Field(
         ...,
         description="Unique client device identifier bound to the license",
-        example="DEV-A892-F41C-90EE"
+        example="DEV-8841BEEF-90EE41AC-7789ABCD"
     )
     expires_in_days: Optional[int] = Field(
         default=30,

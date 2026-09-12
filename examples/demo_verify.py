@@ -40,7 +40,7 @@ def run_demo():
     print(f"    {public_key_b64[:32]}... (Longitud: {len(public_key_b64)} chars)")
 
     # 2. Server issues a license for a specific fictional client device
-    device_id = "DEV-NODE-8841-BEEF"
+    device_id = "DEV-8841BEEF-90EE41AC-7789ABCD"
     now = datetime.now(timezone.utc)
     payload = {
         "license_id": "LIC-DEMO-00123",
@@ -93,7 +93,7 @@ def run_demo():
     is_valid_device, message_device = validate_license(
         public_key_b64=public_key_b64,
         license_bundle=license_bundle,
-        expected_device_id="DEV-UNAUTHORIZED-MACHINE-9999"
+        expected_device_id="DEV-DEADBEEF-CAFE0000-99999999"
     )
     print(f"    Resultado: {'[FAIL] VALIDA' if is_valid_device else '[PASS] DETECTADA COMO RECHAZADA'}")
     print(f"    Detalle:   {message_device}")
