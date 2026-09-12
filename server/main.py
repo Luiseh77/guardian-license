@@ -1,4 +1,4 @@
-"""
+﻿"""
 guardian-license: FastAPI Licensing & Session Server.
 
 Exposes REST endpoints to generate cryptographically signed software licenses
@@ -15,14 +15,16 @@ from .models import (
     SignedLicenseResponse,
     SessionStartRequest,
     SessionHeartbeatRequest,
-    SessionResponse
+    SessionResponse,
+    SignedUpdateResponse
 )
 from .crypto import (
     generate_keypair,
     export_public_key_b64,
-    sign_license_payload
+    sign_payload
 )
 from .sessions import SESSION_STORE
+from .updates import get_latest_release_signed
 
 app = FastAPI(
     title="GuardianLicense Server",
@@ -77,7 +79,7 @@ def issue_license(request: LicenseIssueRequest):
     }
 
     # Sign canonical payload bytes using server private key
-    signature = sign_license_payload(SERVER_PRIVATE_KEY, payload_dict)
+    signature = sign_payload(SERVER_PRIVATE_KEY, payload_dict)
 
     return SignedLicenseResponse(
         payload=LicensePayload(**payload_dict),
@@ -151,3 +153,29 @@ def heartbeat(request: SessionHeartbeatRequest):
         is_active=True,
         message=message
     )
+
+
+# --- OTA Updates Endpoints (Step 4) ---
+
+@app.get(
+    "/updates/latest",
+    response_model=SignedUpdateResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Updates"]
+)
+def get_latest_update():
+    """
+    Returns the latest available software update announcement,
+    cryptographically signed to prevent Man-in-the-Middle (MitM) attacks.
+    """
+    payload, signature, pub_key = get_latest_release_signed(
+        SERVER_PRIVATE_KEY,
+        SERVER_PUBLIC_KEY_B64
+    )
+    
+    return SignedUpdateResponse(
+        payload=payload,
+        signature=signature,
+        public_key_b64=pub_key
+    )
+

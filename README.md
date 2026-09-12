@@ -31,18 +31,21 @@ Un motor moderno de licenciamiento de software basado en **criptografía asimét
 guardian-license/
 ├── README.md
 ├── server/
-│   ├── crypto.py                # Generación Ed25519, serialización canónica y firma
-│   ├── models.py                # Esquemas de datos Pydantic para emisión y sesiones
+│   ├── crypto.py                # Generación Ed25519, canonización JSON y firmas
+│   ├── models.py                # Esquemas Pydantic
 │   ├── sessions.py              # Almacén de sesiones en memoria y control de heartbeat
-│   └── main.py                  # API REST FastAPI (licencias y endpoints de sesión)
+│   ├── updates.py               # Catálogo de releases y generación de firmas OTA
+│   └── main.py                  # API REST FastAPI (licencias, sesiones y OTA)
 ├── client-sdk/
-│   ├── verifier.py              # Verificador ligero offline para integrar en clientes
-│   ├── hardware_id.py           # Huella digital de dispositivo (MAC, disco, hostname + SHA-256)
-│   └── session.py               # Supervisor de sesión y bloqueo por expiración (Lockout)
+│   ├── verifier.py              # Motor offline de validación criptográfica
+│   ├── hardware_id.py           # Generador determinista de huella de hardware
+│   ├── session.py               # Supervisor de sesión y bloqueo por expiración (Lockout)
+│   └── update_verifier.py       # Verificador de integridad y autenticidad de actualizaciones
 └── examples/
     ├── demo_verify.py           # Flujo criptográfico (emisión, verificación y manipulación)
     ├── demo_hardware_binding.py # Prueba de vinculación de hardware y bloqueo de copias
-    └── demo_session_lifecycle.py# Demostración de heartbeat y bloqueo por expiración
+    ├── demo_session_lifecycle.py# Demostración de heartbeat y bloqueo por expiración
+    └── demo_update_verification.py # Demostración de OTA (Anuncio y validación de integridad)
 ```
 
 ---
@@ -64,6 +67,9 @@ python examples/demo_hardware_binding.py
 
 # Prueba 3: Sesiones y Bloqueo por Expiración (Heartbeat Lifecycle)
 python examples/demo_session_lifecycle.py
+
+# Prueba 4: Verificación de Actualizaciones Seguras (OTA)
+python examples/demo_update_verification.py
 ```
 
 ---
@@ -107,15 +113,27 @@ Si la validación fuera puramente offline, el software seguiría funcionando lib
 
 ---
 
+## 🛡️ Verificación de Actualizaciones (OTA Simplificado)
+
+### ¿Qué problema resuelve?
+Incluso si el servidor original es seguro, descargar actualizaciones a través de internet expone al cliente a **ataques Man-in-the-Middle (MitM)** o al compromiso del servidor CDN donde se aloja el archivo binario. Si un atacante reemplaza el instalador legítimo por malware, el cliente podría infectarse al actualizar.
+
+Este patrón de seguridad (OTA - *Over The Air*) garantiza que las actualizaciones sean 100% auténticas, separando la confianza del medio de descarga:
+
+1. **Firma del Anuncio (Autenticidad):** El servidor anuncia la nueva versión y el URL de descarga, entregando esta información junto al **hash SHA-256** del archivo, todo **firmado criptográficamente**. Si un atacante intercepta la API y cambia la URL, la firma Ed25519 se invalida y el cliente rechaza la actualización inmediatamente (antes de descargar nada).
+2. **Verificación del Paquete (Integridad):** Una vez que el cliente descarga el archivo (incluso de un CDN inseguro), calcula localmente su propio hash SHA-256. Si un atacante alteró el paquete inyectando malware, el hash no coincidirá con el hash original firmado por el servidor.
+
+> [!NOTE]
+> Este demo aborda exclusivamente el mecanismo criptográfico de seguridad y confianza. La lógica específica del sistema operativo para aplicar el reemplazo de binarios y reiniciar la aplicación queda fuera del alcance de esta arquitectura.
+
+---
+
 ## ⚙️ Ciclo de Vida de Claves y Consideraciones de Producción
 
 > [!NOTE]
-> **Limitación conocida del entorno demo:**
-> En este repositorio, el servidor genera un par de claves Ed25519 nuevo en memoria al arrancar (`generate_keypair()`). Esto se diseñó intencionalmente para permitir la ejecución inmediata del demo sin requerir configuración previa de archivos de entorno o bases de datos. 
-> 
-> Como consecuencia, si el proceso del servidor se reinicia, la clave pública cambia y las licencias emitidas en ejecuciones anteriores serán invalidadas.
-> 
-> **Implementación en Producción:**
-> * **Persistencia de Clave Privada:** La clave privada del servidor debe generarse una sola vez y resguardarse en un servicio de gestión de secretos (e.g., AWS Secrets Manager, HashiCorp Vault) o en variables de entorno cifradas (`.env`), nunca en memoria volátil ni hardcodeada en el repositorio.
-> * **Distribución de Clave Pública:** La clave pública permanece constante y se compila/empaqueta directamente dentro del binario del software cliente o SDK de verificación.
+> Este repositorio es una **demostración conceptual**. En un entorno de producción, nunca se deben generar claves efímeras en cada reinicio del servidor, y se deben aplicar capas adicionales de seguridad perimetral.
 
+*   **Custodia de Claves:** La clave privada del servidor (`SERVER_PRIVATE_KEY`) jamás debe vivir en código ni en variables de entorno simples. En sistemas corporativos, la firma criptográfica se delega a un HSM (Hardware Security Module) o a servicios manejados como AWS KMS / Azure Key Vault.
+*   **Rotación de Claves:** El sistema debe soportar una lista de claves públicas autorizadas (para permitir la rotación gracefully) o recuperar la clave pública desde un endpoint SSL pinned (ej. `GET /public-key`).
+*   **Ofuscación (Client-Side):** El verificador criptográfico en el cliente (como `client-sdk/verifier.py`) debe integrarse en el binario usando técnicas anti-tampering y ofuscación de código. De lo contrario, un atacante podría simplemente saltarse el `if is_valid:` parcheando el binario o reemplazando la clave pública.
+*   **Contexto en Firmas (Type Confusion):** Como buena práctica de criptografía aplicada, al firmar payloads genéricos (licencias, tokens de sesión, releases OTA) se recomienda incluir un campo estricto de contexto (ej. `"context": "release"` o `"context": "license"`). Esto evita ataques de *Type Confusion*, asegurando que el cliente no procese accidental o maliciosamente un token de sesión válido como si fuera una licencia válida, incluso si comparten la misma clave de firma.

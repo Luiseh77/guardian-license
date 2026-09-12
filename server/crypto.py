@@ -1,4 +1,4 @@
-"""
+﻿"""
 guardian-license: Cryptographic engine using Ed25519 asymmetric signatures.
 
 Provides canonical payload serialization, keypair generation,
@@ -63,7 +63,7 @@ def serialize_canonical_payload(payload: Dict[str, Any]) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def sign_license_payload(
+def sign_payload(
     private_key: ed25519.Ed25519PrivateKey,
     payload: Dict[str, Any]
 ) -> str:
@@ -75,3 +75,4 @@ def sign_license_payload(
     canonical_bytes = serialize_canonical_payload(payload)
     signature_bytes = private_key.sign(canonical_bytes)
     return base64.b64encode(signature_bytes).decode("utf-8")
+

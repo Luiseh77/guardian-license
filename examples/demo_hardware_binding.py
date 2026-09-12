@@ -1,4 +1,4 @@
-"""
+﻿"""
 guardian-license: Hardware Binding Verification Demo.
 
 Demonstrates:
@@ -24,7 +24,7 @@ BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, BASE_DIR)
 sys.path.insert(0, os.path.join(BASE_DIR, "client-sdk"))
 
-from server.crypto import generate_keypair, export_public_key_b64, sign_license_payload
+from server.crypto import generate_keypair, export_public_key_b64, sign_payload
 from verifier import validate_license
 from hardware_id import compute_hardware_hash, get_current_hardware_id
 
@@ -73,7 +73,7 @@ def run_hardware_demo():
         "issued_at": now.isoformat(),
         "expires_at": (now + timedelta(days=60)).isoformat()
     }
-    signature = sign_license_payload(server_private_key, payload)
+    signature = sign_payload(server_private_key, payload)
     license_bundle = {
         "payload": payload,
         "signature": signature
@@ -116,3 +116,4 @@ def run_hardware_demo():
 
 if __name__ == "__main__":
     run_hardware_demo()
+

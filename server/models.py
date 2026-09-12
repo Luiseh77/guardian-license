@@ -73,3 +73,19 @@ class SessionResponse(BaseModel):
     expires_at: str = Field(..., description="ISO 8601 timestamp when the session expires")
     is_active: bool = Field(default=True, description="Session status")
     message: str = Field(default="Session active", description="Status message")
+
+
+# --- Update Management Schemas (Step 4) ---
+
+class ReleasePayload(BaseModel):
+    version: str = Field(..., description="Semantic version string")
+    download_url: str = Field(..., description="URL to download the update package")
+    checksum_sha256: str = Field(..., description="SHA-256 hash of the update package")
+    notes: str = Field(..., description="Release notes or changelog")
+    published_at: str = Field(..., description="ISO 8601 publication timestamp")
+
+
+class SignedUpdateResponse(BaseModel):
+    payload: ReleasePayload
+    signature: str = Field(..., description="Base64 encoded Ed25519 digital signature of the payload")
+    public_key_b64: str = Field(..., description="Server public key (included in demo for testing verification)")

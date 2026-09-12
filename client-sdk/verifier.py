@@ -1,4 +1,4 @@
-"""
+﻿"""
 guardian-license Client SDK: Offline License Verifier.
 
 Verifies signed license bundles using only the server's public key.
@@ -18,7 +18,7 @@ def _serialize_canonical_payload(payload: Dict[str, Any]) -> bytes:
     return json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def verify_license_signature(
+def verify_signature(
     public_key_b64: str,
     payload: Dict[str, Any],
     signature_b64: str
@@ -63,7 +63,7 @@ def validate_license(
         return False, "Malformed license bundle: missing payload or signature."
 
     # 1. Verify digital signature
-    if not verify_license_signature(public_key_b64, payload, signature_b64):
+    if not verify_signature(public_key_b64, payload, signature_b64):
         return False, "Signature verification failed: license bundle is forged or tampered."
 
     # 2. Check expiration
@@ -89,3 +89,4 @@ def validate_license(
             )
 
     return True, "License is authentic, valid, and bound to this device."
+

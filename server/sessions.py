@@ -1,4 +1,4 @@
-"""
+﻿"""
 guardian-license: In-memory Session Manager & Real-Time Lifecycle Control.
 
 Provides short-lived session tracking and heartbeat renewal to enforce
@@ -13,14 +13,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Tuple
 import uuid
 
-from .crypto import sign_license_payload
+from .crypto import sign_payload
 
 # Allow importing verifier from client-sdk
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 sys.path.insert(0, os.path.join(BASE_DIR, "client-sdk"))
-from verifier import verify_license_signature
+from verifier import verify_signature
 
 
 @dataclass
@@ -73,7 +73,7 @@ class SessionStore:
             "expires_at": expires_at.isoformat(),
             "type": "short_lived_session"
         }
-        token = sign_license_payload(server_private_key, token_payload)
+        token = sign_payload(server_private_key, token_payload)
 
         return record, token
 
@@ -110,7 +110,7 @@ class SessionStore:
                 "type": "short_lived_session"
             }
             
-            is_valid_token = verify_license_signature(server_public_key_b64, expected_payload, session_token)
+            is_valid_token = verify_signature(server_public_key_b64, expected_payload, session_token)
             if not is_valid_token:
                 # Token mismatch or forged
                 record.is_active = False
@@ -137,10 +137,11 @@ class SessionStore:
                 "expires_at": record.expires_at.isoformat(),
                 "type": "short_lived_session"
             }
-            refreshed_token = sign_license_payload(server_private_key, token_payload)
+            refreshed_token = sign_payload(server_private_key, token_payload)
 
             return True, record, refreshed_token, "Heartbeat successful: session extended."
 
 
 # Global in-memory session store instance for server runtime
 SESSION_STORE = SessionStore()
+
