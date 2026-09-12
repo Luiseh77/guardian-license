@@ -31,15 +31,18 @@ Un motor moderno de licenciamiento de software basado en **criptografía asimét
 guardian-license/
 ├── README.md
 ├── server/
-│   ├── crypto.py               # Generación Ed25519, serialización canónica y firma
-│   ├── models.py               # Esquemas de datos Pydantic para emisión
-│   └── main.py                 # API REST FastAPI para emisión de licencias
+│   ├── crypto.py                # Generación Ed25519, serialización canónica y firma
+│   ├── models.py                # Esquemas de datos Pydantic para emisión y sesiones
+│   ├── sessions.py              # Almacén de sesiones en memoria y control de heartbeat
+│   └── main.py                  # API REST FastAPI (licencias y endpoints de sesión)
 ├── client-sdk/
-│   ├── verifier.py             # Verificador ligero offline para integrar en clientes
-│   └── hardware_id.py          # Huella digital de dispositivo (MAC, disco, hostname + SHA-256)
+│   ├── verifier.py              # Verificador ligero offline para integrar en clientes
+│   ├── hardware_id.py           # Huella digital de dispositivo (MAC, disco, hostname + SHA-256)
+│   └── session.py               # Supervisor de sesión y bloqueo por expiración (Lockout)
 └── examples/
     ├── demo_verify.py           # Flujo criptográfico (emisión, verificación y manipulación)
-    └── demo_hardware_binding.py # Prueba de vinculación de hardware y bloqueo de copias
+    ├── demo_hardware_binding.py # Prueba de vinculación de hardware y bloqueo de copias
+    └── demo_session_lifecycle.py# Demostración de heartbeat y bloqueo por expiración
 ```
 
 ---
@@ -58,6 +61,9 @@ python examples/demo_verify.py
 
 # Prueba 2: Vinculación a Dispositivo (Hardware Binding)
 python examples/demo_hardware_binding.py
+
+# Prueba 3: Sesiones y Bloqueo por Expiración (Heartbeat Lifecycle)
+python examples/demo_session_lifecycle.py
 ```
 
 ---
@@ -80,6 +86,24 @@ El **Hardware Binding** resuelve este problema atando criptográficamente la val
   * **Flujos de Re-activación:** En sistemas comerciales reales se implementa un endpoint de transferencia de licencias que permite a los usuarios revocar la máquina anterior y emitir una nueva para el nuevo hardware (con límites por año).
   * **Algoritmos de Tolerancia (Fuzzy Matching):** En lugar de un hash estricto único, algunos motores comerciales calculan hashes por componente individual (CPU, BIOS, Placa, Disco) y permiten la validación si al menos 3 de los 4 componentes coinciden.
   *(Estos flujos de re-activación y coincidencia difusa quedan fuera del alcance de este demo educativo).*
+
+---
+
+## ⏱️ Sesiones de Corta Duración y Bloqueo por Expiración
+
+### ¿Qué problema resuelve?
+Una licencia de largo plazo (ej. anual o perpetua) permite validar el software de forma offline, pero introduce un problema crítico de negocio: **¿qué ocurre si el cliente cancela su suscripción o comete fraude al segundo mes?**
+
+Si la validación fuera puramente offline, el software seguiría funcionando libremente hasta que expire el año completo. Las **sesiones de corta duración** resuelven esto introduciendo supervisión activa en tiempo real:
+
+1. **Inicio de Sesión:** Tras validar la licencia local, el software solicita al servidor un token de sesión efímero (ej. 5 a 15 minutos de validez).
+2. **Ciclo de Heartbeat:** El cliente ejecuta un hilo en segundo plano que envía una señal periódica (*heartbeat*) antes de que expire la sesión, extendiendo la validez.
+3. **Bloqueo Inmediato (Lockout):** Si el servidor revoca la sesión o el cliente pierde la conexión y no logra renovar antes del límite, el `SessionManager` activa un bloqueo de ejecución (`SessionExpiredError`), impidiendo que el usuario continúe utilizando las funciones protegidas.
+4. **Rechazo de Renovación Tardía:** Si llega un heartbeat posterior a la expiración, el servidor lo rechaza de plano, obligando a una re-autenticación completa.
+
+### Trade-off y Manejo de Tolerancia Offline
+* **Trade-off:** Requiere que el software cliente tenga conexión periódica al servidor para mantener la sesión viva.
+* **Mitigación en Producción (Período de Gracia):** Para evitar bloquear a un usuario legítimo por una caída temporal de su red local, los sistemas de producción implementan una **tolerancia de gracia offline** (ej. permitir 24 o 48 horas de operación desconectada antes de exigir un heartbeat forzoso). *(Este mecanismo de tolerancia extendida queda fuera del alcance de este demo educativo).*
 
 ---
 

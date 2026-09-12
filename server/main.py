@@ -1,19 +1,28 @@
 """
-guardian-license: FastAPI Licensing Server.
+guardian-license: FastAPI Licensing & Session Server.
 
-Exposes REST endpoints to generate cryptographically signed software licenses.
+Exposes REST endpoints to generate cryptographically signed software licenses
+and manage real-time short-lived sessions with heartbeat renewal.
 """
 
 from datetime import datetime, timedelta, timezone
 import uuid
 from fastapi import FastAPI, HTTPException, status
 
-from .models import LicenseIssueRequest, LicensePayload, SignedLicenseResponse
+from .models import (
+    LicenseIssueRequest,
+    LicensePayload,
+    SignedLicenseResponse,
+    SessionStartRequest,
+    SessionHeartbeatRequest,
+    SessionResponse
+)
 from .crypto import (
     generate_keypair,
     export_public_key_b64,
     sign_license_payload
 )
+from .sessions import SESSION_STORE
 
 app = FastAPI(
     title="GuardianLicense Server",
@@ -74,4 +83,71 @@ def issue_license(request: LicenseIssueRequest):
         payload=LicensePayload(**payload_dict),
         signature=signature,
         public_key_b64=SERVER_PUBLIC_KEY_B64
+    )
+
+
+# --- Real-Time Session Endpoints (Step 3) ---
+
+@app.post(
+    "/sessions/start",
+    response_model=SessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    tags=["Sessions"]
+)
+def start_session(request: SessionStartRequest):
+    """
+    Initializes a short-lived operational session for a validated license and device.
+    """
+    if not request.license_id.strip() or not request.device_id.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="license_id and device_id are required"
+        )
+
+    record, token = SESSION_STORE.create_session(
+        license_id=request.license_id,
+        device_id=request.device_id,
+        ttl_seconds=request.ttl_seconds,
+        server_private_key=SERVER_PRIVATE_KEY
+    )
+
+    return SessionResponse(
+        session_id=record.session_id,
+        session_token=token,
+        expires_at=record.expires_at.isoformat(),
+        is_active=True,
+        message="Session started successfully"
+    )
+
+
+@app.post(
+    "/sessions/heartbeat",
+    response_model=SessionResponse,
+    status_code=status.HTTP_200_OK,
+    tags=["Sessions"]
+)
+def heartbeat(request: SessionHeartbeatRequest):
+    """
+    Refreshes an active session token. Fails if the session has already expired.
+    """
+    success, record, refreshed_token, message = SESSION_STORE.process_heartbeat(
+        session_id=request.session_id,
+        session_token=request.session_token,
+        extend_seconds=request.extend_seconds,
+        server_private_key=SERVER_PRIVATE_KEY,
+        server_public_key_b64=SERVER_PUBLIC_KEY_B64
+    )
+
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=message
+        )
+
+    return SessionResponse(
+        session_id=record.session_id,
+        session_token=refreshed_token,
+        expires_at=record.expires_at.isoformat(),
+        is_active=True,
+        message=message
     )
